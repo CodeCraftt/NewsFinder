@@ -79,6 +79,30 @@ def extract_headlines(num_pages=1, headlines_per_page=10):
 
     return headlines_data
 
+# Function to attempt a task multiple times before giving up
+def retry_operation(func, retries=3, delay=5, *args, **kwargs):
+    """
+    Retry an operation multiple times if it fails.
+    
+    :param func: The function to be executed
+    :param retries: The number of retries (default is 3)
+    :param delay: Time delay between retries in seconds (default is 5 seconds)
+    :param args: Arguments for the function
+    :param kwargs: Keyword arguments for the function
+    :return: The return value of the function if successful, or None if failed
+    """
+    last_exception = None
+    for attempt in range(1, retries + 1):
+        try:
+            return func(*args, **kwargs)  # Try to execute the function
+        except Exception as e:
+            last_exception = e
+            log_message(f"Attempt {attempt} failed: {e}")
+            time.sleep(delay)  # Wait for a while before retrying
+    # If all attempts fail, log the final failure and return None
+    log_message(f"Operation failed after {retries} attempts: {last_exception}")
+    return None
+
 def save_to_csv(data, filename="headlines.csv"):
     try:
         # Save data to CSV file
