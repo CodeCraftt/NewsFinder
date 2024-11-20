@@ -5,29 +5,45 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 import time
 import csv
+import json
+import logging
 from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime
 
-# Setup Chrome options to avoid opening a visible browser window
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# Setup Chrome options
 chrome_options = Options()
-chrome_options.add_argument("--headless")  # Run in headless mode (no UI)
+chrome_options.add_argument("--headless")  # Run in headless mode
+chrome_options.add_argument("--disable-gpu")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
 
 # Initialize the WebDriver
+logging.info("Initializing WebDriver...")
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
 # Open CNN website
+logging.info("Opening CNN website...")
 driver.get("https://www.cnn.com")
 
 # Function to wait for elements to load
 def wait_for_element(selector, by=By.CSS_SELECTOR, timeout=10):
+    logging.info(f"Waiting for element: {selector}")
     start_time = time.time()
     while True:
         try:
             element = driver.find_element(by, selector)
             return element
-        except:
+        except Exception:
             if time.time() - start_time > timeout:
-                raise Exception(f"Timeout while waiting for {selector}")
+                logging.error(f"Timeout while waiting for {selector}")
+                raise
             time.sleep(0.5)
 
 # Wait for the top stories to load
@@ -35,68 +51,92 @@ wait_for_element(".container__headline", By.CSS_SELECTOR)
 
 # Function to extract headlines, links, and publication time
 def get_top_headlines():
+    logging.info("Extracting top headlines...")
     headlines_data = []
+    retries = 3
 
     # Find all the top headline containers
     headlines_containers = driver.find_elements(By.CSS_SELECTOR, ".container__headline")
-    
     for container in headlines_containers:
-        try:
-            # Extract headline text and link
-            headline = container.find_element(By.TAG_NAME, "a").text
-            link = container.find_element(By.TAG_NAME, "a").get_attribute("href")
-
-            # Optional: Extract publication time (if available)
+        for attempt in range(retries):
             try:
-                pub_time = container.find_element(By.CSS_SELECTOR, "span.timestamp").text
-            except:
-                pub_time = "Unknown"
+                # Extract headline text and link
+                headline = container.find_element(By.TAG_NAME, "a").text
+                link = container.find_element(By.TAG_NAME, "a").get_attribute("href")
 
-            headlines_data.append({
-                "headline": headline,
-                "link": link,
-                "published_time": pub_time
-            })
+                # Optional: Extract publication time (if available)
+                try:
+                    pub_time = container.find_element(By.CSS_SELECTOR, "span.timestamp").text
+                except:
+                    pub_time = "Unknown"
 
-        except Exception as e:
-            print(f"Error extracting data from a headline: {e}")
+                headlines_data.append({
+                    "headline": headline,
+                    "link": link,
+                    "published_time": pub_time,
+                })
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    logging.warning(f"Retrying extraction ({attempt + 1}/{retries})...")
+                    time.sleep(1)
+                else:
+                    logging.error(f"Failed to extract data from a headline: {e}")
 
     return headlines_data
 
-# Scroll down to load more content if needed (Handle infinite scroll)
+# Scroll down dynamically to load more content
 def scroll_to_bottom():
-    # Scroll 3 times to simulate loading of new content
-    for _ in range(3):
+    logging.info("Scrolling to load more content...")
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    scroll_attempts = 3
+
+    for _ in range(scroll_attempts):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(2)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
 
-# Wait for the page to load and then scroll to load more content
+# Scroll and extract headlines
 scroll_to_bottom()
-
-# Get top headlines from CNN
 headlines = get_top_headlines()
 
 # Print and save the headlines
-print("\nTop Headlines on CNN:")
+logging.info("\nTop Headlines on CNN:")
 for idx, data in enumerate(headlines[:10]):  # Show top 10 headlines
     print(f"{idx + 1}. {data['headline']}")
     print(f"   Link: {data['link']}")
     print(f"   Published: {data['published_time']}")
     print("-" * 80)
 
-# Export the data to a CSV file
+# Export data to CSV
 def export_to_csv(data, filename="headlines.csv"):
+    logging.info(f"Exporting data to {filename}...")
     try:
         with open(filename, mode="w", newline='', encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=["headline", "link", "published_time"])
             writer.writeheader()
             writer.writerows(data)
-        print(f"\nData successfully saved to {filename}")
+        logging.info(f"Data successfully saved to {filename}")
     except Exception as e:
-        print(f"Error exporting data to CSV: {e}")
+        logging.error(f"Error exporting data to CSV: {e}")
 
-# Call the function to export data
+# Export data to JSON
+def export_to_json(data, filename="headlines.json"):
+    logging.info(f"Exporting data to {filename}...")
+    try:
+        with open(filename, mode="w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4)
+        logging.info(f"Data successfully saved to {filename}")
+    except Exception as e:
+        logging.error(f"Error exporting data to JSON: {e}")
+
+# Export data
 export_to_csv(headlines)
+export_to_json(headlines)
 
 # Close the driver after operation is complete
+logging.info("Closing the WebDriver...")
 driver.quit()
