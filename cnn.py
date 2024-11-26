@@ -9,6 +9,7 @@ import json
 import logging
 from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -111,8 +112,14 @@ for idx, data in enumerate(headlines[:10]):  # Show top 10 headlines
     print(f"   Published: {data['published_time']}")
     print("-" * 80)
 
-# Export data to CSV
+# Dynamic filename based on the current date
+def get_filename(base_name, ext):
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    return f"{base_name}_{current_date}.{ext}"
+
+# Export data to CSV with dynamic filename
 def export_to_csv(data, filename="headlines.csv"):
+    filename = get_filename(filename, "csv")
     logging.info(f"Exporting data to {filename}...")
     try:
         with open(filename, mode="w", newline='', encoding="utf-8") as file:
@@ -123,8 +130,9 @@ def export_to_csv(data, filename="headlines.csv"):
     except Exception as e:
         logging.error(f"Error exporting data to CSV: {e}")
 
-# Export data to JSON
+# Export data to JSON with dynamic filename
 def export_to_json(data, filename="headlines.json"):
+    filename = get_filename(filename, "json")
     logging.info(f"Exporting data to {filename}...")
     try:
         with open(filename, mode="w", encoding="utf-8") as file:
@@ -133,9 +141,19 @@ def export_to_json(data, filename="headlines.json"):
     except Exception as e:
         logging.error(f"Error exporting data to JSON: {e}")
 
-# Export data
-export_to_csv(headlines)
-export_to_json(headlines)
+# Function to filter headlines by keyword
+def filter_headlines_by_keyword(headlines, keyword):
+    logging.info(f"Filtering headlines by keyword: {keyword}")
+    filtered_headlines = [data for data in headlines if keyword.lower() in data["headline"].lower()]
+    logging.info(f"Found {len(filtered_headlines)} headlines containing '{keyword}'")
+    return filtered_headlines
+
+# Example: Filtering headlines containing the keyword "election"
+filtered_headlines = filter_headlines_by_keyword(headlines, "election")
+
+# Export filtered headlines to CSV and JSON
+export_to_csv(filtered_headlines)
+export_to_json(filtered_headlines)
 
 # Close the driver after operation is complete
 logging.info("Closing the WebDriver...")
